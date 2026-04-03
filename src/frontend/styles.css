@@ -1586,6 +1586,12 @@ body {
 
 .running-container { padding: 20px; }
 
+.running-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 12px;
+}
+
 .running-card {
     background: var(--bg-card);
     border: 1px solid var(--border);

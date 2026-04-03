@@ -726,7 +726,7 @@ function render() {
   }
 
   if (currentView === 'running') {
-    renderRunning(content);
+    renderRunning(content, sessions);
     return;
   }
 
@@ -1440,7 +1440,7 @@ document.addEventListener('keydown', function(e) {
 
 // ── Running Sessions View ──────────────────────────────────────
 
-function renderRunning(container) {
+function renderRunning(container, sessions) {
   var activeIds = Object.keys(activeSessions);
 
   if (activeIds.length === 0) {
@@ -1448,8 +1448,10 @@ function renderRunning(container) {
     return;
   }
 
+  // Running cards at top
   var html = '<div class="running-container">';
-  html += '<h2 class="heatmap-title">Running Sessions</h2>';
+  html += '<h2 class="heatmap-title">Running Sessions (' + activeIds.length + ')</h2>';
+  html += '<div class="running-grid">';
 
   activeIds.forEach(function(sid) {
     var a = activeSessions[sid];
@@ -1466,7 +1468,6 @@ function renderRunning(container) {
     html += '<span class="running-tool">' + escHtml(a.entrypoint || a.kind || 'claude') + '</span>';
     html += '</div>';
 
-    // Stats row
     html += '<div class="running-stats">';
     html += '<div class="running-stat"><span class="running-stat-val">' + a.cpu.toFixed(1) + '%</span><span class="running-stat-label">CPU</span></div>';
     html += '<div class="running-stat"><span class="running-stat-val">' + a.memoryMB + 'MB</span><span class="running-stat-label">Memory</span></div>';
@@ -1476,21 +1477,31 @@ function renderRunning(container) {
     }
     html += '</div>';
 
-    // Message preview
     if (s && s.first_message) {
       html += '<div class="running-msg">' + escHtml(s.first_message.slice(0, 150)) + '</div>';
     }
 
-    // Action buttons
     html += '<div class="running-actions">';
-    html += '<button class="launch-btn" style="background:var(--accent-green);color:#000" onclick="focusSession(\'' + sid + '\')">Focus Terminal</button>';
+    html += '<button class="launch-btn" style="background:var(--accent-green);color:#000" onclick="focusSession(\'' + sid + '\')">Focus</button>';
     if (s) {
       html += '<button class="launch-btn btn-secondary" onclick="var ss=allSessions.find(function(x){return x.id===\'' + sid + '\'});if(ss)openDetail(ss);">Details</button>';
+      html += '<button class="launch-btn btn-secondary" onclick="closeDetail();openReplay(\'' + sid + '\',\'' + escHtml((s.project || '').replace(/'/g, "\\'")) + '\')">Replay</button>';
     }
     html += '</div>';
-
     html += '</div>';
   });
+
+  html += '</div>';
+
+  // Also show recent non-active sessions below
+  var recentInactive = sessions.filter(function(s) { return !activeSessions[s.id]; }).slice(0, 6);
+  if (recentInactive.length > 0) {
+    html += '<h3 style="margin:24px 0 12px;font-size:14px;color:var(--text-secondary)">Recently Inactive</h3>';
+    html += '<div class="grid-view">';
+    var idx = 0;
+    recentInactive.forEach(function(s) { html += renderCard(s, idx++); });
+    html += '</div>';
+  }
 
   html += '</div>';
   container.innerHTML = html;
