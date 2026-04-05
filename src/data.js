@@ -442,7 +442,15 @@ function loadSessionDetail(sessionId, project) {
         if (entry.type === 'user' || entry.type === 'assistant') {
           const content = extractContent((entry.message || {}).content);
           if (content) {
-            messages.push({ role: entry.type, content: content.slice(0, 2000), uuid: entry.uuid || '' });
+            const msg = { role: entry.type, content: content.slice(0, 2000), uuid: entry.uuid || '' };
+            if (entry.type === 'assistant') {
+              const rawContent = (entry.message || {}).content;
+              if (Array.isArray(rawContent)) {
+                const tools = extractTools(rawContent);
+                if (tools.length > 0) msg.tools = tools;
+              }
+            }
+            messages.push(msg);
           }
         }
       } else {
@@ -637,6 +645,32 @@ function isSystemMessage(text) {
   if (t.startsWith('You are Codex')) return true;
   if (t.startsWith('Filesystem sandboxing')) return true;
   return false;
+}
+
+function extractTools(contentBlocks) {
+  const tools = [];
+  const seen = new Set();
+  for (const block of contentBlocks) {
+    if (block.type !== 'tool_use') continue;
+    const name = block.name || '';
+    if (name.startsWith('mcp__')) {
+      const parts = name.split('__');
+      if (parts.length >= 3) {
+        const key = 'mcp:' + parts[1] + ':' + parts.slice(2).join('__');
+        if (!seen.has(key)) {
+          seen.add(key);
+          tools.push({ type: 'mcp', server: parts[1], tool: parts.slice(2).join('__') });
+        }
+      }
+    } else if (name === 'Skill') {
+      const skill = (block.input || {}).skill;
+      if (skill && !seen.has('skill:' + skill)) {
+        seen.add('skill:' + skill);
+        tools.push({ type: 'skill', skill: skill });
+      }
+    }
+  }
+  return tools;
 }
 
 function extractContent(raw) {
