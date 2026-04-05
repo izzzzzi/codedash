@@ -1101,6 +1101,12 @@ body {
 
 .heatmap-container {
     padding: 20px;
+    overflow-x: auto;
+}
+
+.heatmap-container .heatmap-row,
+.heatmap-container .heatmap-months {
+    min-width: max-content;
 }
 
 .heatmap-title {

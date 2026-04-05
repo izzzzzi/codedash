@@ -302,7 +302,8 @@ function loadSessions() {
   for (const s of result) {
     s.first_time = new Date(s.first_ts).toLocaleString('sv-SE').slice(0, 16);
     s.last_time = new Date(s.last_ts).toLocaleString('sv-SE').slice(0, 16);
-    s.date = new Date(s.last_ts).toISOString().slice(0, 10);
+    const dt = new Date(s.last_ts);
+    s.date = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
   }
 
   return result;
