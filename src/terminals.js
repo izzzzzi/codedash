@@ -188,7 +188,7 @@ function focusTerminalByPid(pid) {
           const parentCmd = execSync(`ps -p ${ppid} -o comm= 2>/dev/null`, { encoding: 'utf8' }).trim();
           if (parentCmd.includes('cmux')) {
             execSync(`osascript -e 'tell application "cmux" to activate'`, { stdio: 'pipe', timeout: 2000 });
-            return true;
+            return { ok: true, terminal: 'cmux' };
           }
           checkPid = ppid;
         }
@@ -215,31 +215,31 @@ function focusTerminalByPid(pid) {
           return "not found"
         `;
         execSync(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { stdio: 'pipe', timeout: 3000 });
-        return true;
+        return { ok: true, terminal: 'iTerm2' };
       } catch {}
 
-      // Try cmux
+      // Try cmux (fallback if parent chain didn't detect it)
       try {
         if (fs.existsSync('/Applications/cmux.app')) {
           execSync(`osascript -e 'tell application "cmux" to activate'`, { stdio: 'pipe', timeout: 2000 });
-          return true;
+          return { ok: true, terminal: 'cmux' };
         }
       } catch {}
 
       // Fallback: just activate iTerm2 or Terminal.app
       try {
         execSync(`osascript -e 'tell application "iTerm" to activate'`, { stdio: 'pipe' });
-        return true;
+        return { ok: true, terminal: 'iTerm2' };
       } catch {}
       try {
         execSync(`osascript -e 'tell application "Terminal" to activate'`, { stdio: 'pipe' });
-        return true;
+        return { ok: true, terminal: 'Terminal.app' };
       } catch {}
     } catch {}
   }
 
   // Linux/other: not much we can do without window manager integration
-  return false;
+  return { ok: false };
 }
 
 module.exports = { detectTerminals, openInTerminal, focusTerminalByPid };

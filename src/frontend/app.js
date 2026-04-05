@@ -1761,8 +1761,13 @@ function focusSession(sessionId) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pid: a.pid })
   }).then(function(r) { return r.json(); }).then(function(data) {
-    if (data.ok) showToast('Switched to terminal (PID ' + a.pid + ')');
-    else showToast('Could not focus — try clicking the terminal manually');
+    if (data.ok) {
+      var hint = data.terminal || 'terminal';
+      var cwd = a.cwd ? a.cwd.split('/').pop() : '';
+      showToast('Switched to ' + hint + (cwd ? ' — look for: ' + cwd : '') + ' (PID ' + a.pid + ')');
+    } else {
+      showToast('Could not focus — try clicking the terminal manually');
+    }
   }).catch(function() {
     showToast('Focus failed');
   });

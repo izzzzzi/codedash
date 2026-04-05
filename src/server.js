@@ -148,8 +148,8 @@ function startServer(port, openBrowser = true) {
       readBody(req, body => {
         try {
           const { pid } = JSON.parse(body);
-          const ok = focusTerminalByPid(pid);
-          json(res, { ok });
+          const result = focusTerminalByPid(pid);
+          json(res, result);
         } catch (e) {
           json(res, { ok: false, error: e.message }, 400);
         }
