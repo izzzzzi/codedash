@@ -130,13 +130,11 @@ body {
     color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.15s;
-    font-size: 14px;
+    font-size: 13px;
     user-select: none;
 }
 .sidebar-item:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
 .sidebar-item.active { color: var(--text-primary); background: rgba(255,255,255,0.08); }
-.sidebar-item.small { padding: 6px 20px; font-size: 12px; }
-.sidebar-item.small svg { width: 14px; height: 14px; }
 .sidebar-item svg { width: 18px; height: 18px; opacity: 0.7; }
 
 .sidebar-divider { height: 1px; background: var(--border); margin: 12px 20px; }
@@ -1066,6 +1064,27 @@ body {
     flex-wrap: wrap;
     gap: 4px;
     margin-top: 4px;
+}
+
+/* ── Skeleton preloader ─────────────────────────────────────── */
+
+@keyframes skeleton-shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+}
+
+.skeleton-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+}
+
+.skeleton-bar {
+    background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+    background-size: 400px 100%;
+    animation: skeleton-shimmer 1.5s infinite;
+    border-radius: 4px;
 }
 
 /* ── Groups ─────────────────────────────────────────────────── */

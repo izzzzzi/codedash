@@ -2018,6 +2018,30 @@ function dismissUpdate() {
 // ── Initialization ─────────────────────────────────────────────
 
 (function init() {
+  // Show skeleton preloader
+  var content = document.getElementById('content');
+  if (content) {
+    var skeletonHtml = '';
+    for (var i = 0; i < 6; i++) {
+      skeletonHtml += '<div class="skeleton-card">';
+      skeletonHtml += '<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">';
+      skeletonHtml += '<div class="skeleton-bar" style="width:50px;height:16px"></div>';
+      skeletonHtml += '<div class="skeleton-bar" style="width:70px;height:16px"></div>';
+      skeletonHtml += '<div style="flex:1"></div>';
+      skeletonHtml += '<div class="skeleton-bar" style="width:40px;height:16px"></div>';
+      skeletonHtml += '</div>';
+      skeletonHtml += '<div class="skeleton-bar" style="width:' + (60 + Math.random() * 30) + '%;height:10px;margin-bottom:8px"></div>';
+      skeletonHtml += '<div class="skeleton-bar" style="width:' + (30 + Math.random() * 30) + '%;height:10px;margin-bottom:8px"></div>';
+      skeletonHtml += '<div style="display:flex;gap:8px;margin-top:8px">';
+      skeletonHtml += '<div class="skeleton-bar" style="width:50px;height:12px"></div>';
+      skeletonHtml += '<div class="skeleton-bar" style="width:60px;height:12px"></div>';
+      skeletonHtml += '<div class="skeleton-bar" style="width:70px;height:12px"></div>';
+      skeletonHtml += '</div>';
+      skeletonHtml += '</div>';
+    }
+    content.innerHTML = skeletonHtml;
+  }
+
   // Load data
   loadSessions();
   loadTerminals();
