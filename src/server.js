@@ -6,6 +6,7 @@ const { exec } = require('child_process');
 const { loadSessions, loadSessionDetail, deleteSession, getGitCommits, exportSessionMarkdown, getSessionPreview, searchFullText, getActiveSessions, getSessionReplay, getCostAnalytics, computeSessionCost } = require('./data');
 const { detectTerminals, openInTerminal, focusTerminalByPid } = require('./terminals');
 const { convertSession } = require('./convert');
+const { generateHandoff } = require('./handoff');
 const { CHANGELOG } = require('./changelog');
 const { getHTML } = require('./html');
 
@@ -110,6 +111,23 @@ function startServer(port, openBrowser = true) {
     else if (req.method === 'GET' && pathname === '/api/active') {
       const active = getActiveSessions();
       json(res, active);
+    }
+
+    // ── Handoff document ───────────────────
+    else if (req.method === 'GET' && pathname.startsWith('/api/handoff/')) {
+      const sessionId = pathname.split('/').pop();
+      const project = parsed.searchParams.get('project') || '';
+      const verbosity = parsed.searchParams.get('verbosity') || 'standard';
+      const result = generateHandoff(sessionId, project, { verbosity });
+      if (result.ok) {
+        res.writeHead(200, {
+          'Content-Type': 'text/markdown; charset=utf-8',
+          'Content-Disposition': `attachment; filename="handoff-${sessionId.slice(0, 8)}.md"`,
+        });
+        res.end(result.markdown);
+      } else {
+        json(res, result, 404);
+      }
     }
 
     // ── Convert session ─────────────────────

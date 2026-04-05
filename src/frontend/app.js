@@ -1091,6 +1091,7 @@ async function openDetail(s) {
     infoHtml += '<button class="launch-btn btn-secondary" onclick="exportMd(\'' + s.id + '\',\'' + escHtml(s.project || '') + '\')">Export MD</button>';
     var convertTarget = s.tool === 'codex' ? 'claude' : 'codex';
     infoHtml += '<button class="launch-btn btn-secondary" onclick="convertTo(\'' + s.id + '\',\'' + escHtml(s.project || '') + '\',\'' + convertTarget + '\')">Convert to ' + convertTarget + '</button>';
+    infoHtml += '<button class="launch-btn btn-secondary" onclick="downloadHandoff(\'' + s.id + '\',\'' + escHtml(s.project || '') + '\')">Handoff</button>';
   }
   infoHtml += '<button class="star-btn detail-star' + (isStarred ? ' active' : '') + '" onclick="toggleStar(\'' + s.id + '\')">&#9733; ' + (isStarred ? 'Starred' : 'Star') + '</button>';
   infoHtml += '<button class="launch-btn btn-delete" onclick="showDeleteConfirm(\'' + s.id + '\',\'' + escHtml(s.project || '') + '\')">Delete</button>';
@@ -1811,6 +1812,12 @@ async function convertTo(sessionId, project, targetFormat) {
   } catch (e) {
     showToast('Convert failed: ' + e.message);
   }
+}
+
+// ── Handoff ───────────────────────────────────────────────────
+
+function downloadHandoff(sessionId, project) {
+  window.open('/api/handoff/' + sessionId + '?project=' + encodeURIComponent(project) + '&verbosity=standard');
 }
 
 // ── Install agents ────────────────────────────────────────────

@@ -4,6 +4,7 @@ const { loadSessions, searchFullText, getSessionPreview, computeSessionCost } = 
 const { startServer } = require('../src/server');
 const { exportArchive, importArchive } = require('../src/migrate');
 const { convertSession } = require('../src/convert');
+const { generateHandoff, quickHandoff } = require('../src/handoff');
 
 const DEFAULT_PORT = 3847;
 const args = process.argv.slice(2);
@@ -131,6 +132,70 @@ switch (command) {
     break;
   }
 
+  case 'handoff':
+  case 'continue': {
+    const sid = args[1];
+    const target = args[2] || 'any';
+    const verbFlag = args.find(a => a.startsWith('--verbosity='));
+    const verbosity = verbFlag ? verbFlag.split('=')[1] : 'standard';
+    const outFlag = args.find(a => a.startsWith('--out='));
+
+    if (!sid) {
+      console.log(`
+  \x1b[36m\x1b[1mHandoff session to another agent\x1b[0m
+
+  Usage: codedash handoff <session-id> [target] [options]
+
+  Generates a context document for continuing a session in another tool.
+
+  Targets: claude, codex, opencode, any (default)
+  Options:
+    --verbosity=minimal|standard|verbose|full
+    --out=file.md  (save to file instead of stdout)
+
+  Examples:
+    codedash handoff 13ae5748                    Print handoff doc
+    codedash handoff 13ae5748 codex              For Codex specifically
+    codedash handoff 13ae5748 --verbosity=full   Include more context
+    codedash handoff 13ae5748 --out=handoff.md   Save to file
+
+  Quick handoff (latest session):
+    codedash handoff claude codex                Latest Claude → Codex
+`);
+      break;
+    }
+
+    // Check if sid is a tool name (quick handoff)
+    let result;
+    if (['claude', 'codex', 'opencode'].includes(sid)) {
+      result = quickHandoff(sid, target, { verbosity });
+    } else {
+      const allH = loadSessions();
+      const match = allH.find(s => s.id === sid || s.id.startsWith(sid));
+      if (!match) {
+        console.error(`  Session not found: ${sid}`);
+        process.exit(1);
+      }
+      result = generateHandoff(match.id, match.project, { verbosity, target });
+    }
+
+    if (!result.ok) {
+      console.error(`  \x1b[31mError:\x1b[0m ${result.error}\n`);
+      process.exit(1);
+    }
+
+    if (outFlag) {
+      const outPath = outFlag.split('=')[1];
+      require('fs').writeFileSync(outPath, result.markdown);
+      console.log(`\n  \x1b[32mHandoff saved to ${outPath}\x1b[0m`);
+      console.log(`  Source: ${result.session.tool} (${result.session.id.slice(0, 12)})`);
+      console.log(`  Messages: ${result.session.messages}\n`);
+    } else {
+      console.log(result.markdown);
+    }
+    break;
+  }
+
   case 'convert': {
     const sid = args[1];
     const target = args[2]; // 'claude' or 'codex'
@@ -253,6 +318,7 @@ switch (command) {
     codedash show <session-id>           Show session details + messages
     codedash list [limit]                List sessions in terminal
     codedash stats                       Show session statistics
+    codedash handoff <id> [target]       Generate handoff document
     codedash convert <id> <format>       Convert session (claude/codex)
     codedash export [file.tar.gz]        Export all sessions to archive
     codedash import <file.tar.gz>        Import sessions from archive
