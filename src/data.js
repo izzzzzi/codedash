@@ -405,6 +405,12 @@ function loadSessions() {
     }
   }
 
+  // Ensure all sessions have mcp_servers/skills (non-Claude sessions skip enrichment loop)
+  for (const s of Object.values(sessions)) {
+    if (!s.mcp_servers) s.mcp_servers = [];
+    if (!s.skills) s.skills = [];
+  }
+
   const result = Object.values(sessions).sort((a, b) => b.last_ts - a.last_ts);
 
   for (const s of result) {
