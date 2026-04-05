@@ -1051,6 +1051,23 @@ body {
     color: var(--accent-orange);
 }
 
+.badge-mcp {
+    background: rgba(251, 146, 60, 0.15);
+    color: var(--accent-orange);
+}
+
+.badge-skill {
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--accent-purple);
+}
+
+.msg-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
 /* ── Groups ─────────────────────────────────────────────────── */
 
 .group {
