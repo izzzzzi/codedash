@@ -1150,6 +1150,17 @@ async function openDetail(s) {
           var roleLabel = m.role === 'user' ? 'You' : 'Assistant';
           msgsHtml += '<div class="message ' + roleClass + '">';
           msgsHtml += '<div class="msg-role">' + roleLabel + '</div>';
+          if (m.tools && m.tools.length > 0) {
+            msgsHtml += '<div class="msg-tools">';
+            m.tools.forEach(function(t) {
+              if (t.type === 'mcp') {
+                msgsHtml += '<span class="tool-badge badge-mcp">' + escHtml(t.tool) + '</span>';
+              } else if (t.type === 'skill') {
+                msgsHtml += '<span class="tool-badge badge-skill">' + escHtml(t.skill) + '</span>';
+              }
+            });
+            msgsHtml += '</div>';
+          }
           msgsHtml += '<div class="msg-content">' + escHtml(m.content) + '</div>';
           msgsHtml += '</div>';
         });
