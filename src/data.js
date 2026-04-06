@@ -212,8 +212,22 @@ function scanCursorSessions() {
         const transcriptsDir = path.join(CURSOR_PROJECTS, proj, 'agent-transcripts');
         if (!fs.existsSync(transcriptsDir)) continue;
 
-        // Decode project path: "Users-v-kovalskii-vpn" → "/Users/v.kovalskii/vpn"
-        const projectPath = '/' + proj.replace(/-/g, '/');
+        // Decode project path from Cursor's encoding
+        // "Users-v-kovalskii-vpn" could be /Users/v.kovalskii/vpn or /Users/v-kovalskii/vpn
+        // Try to find existing directory by progressively splitting
+        let projectPath = '';
+        const segments = proj.split('-');
+        let candidate = '';
+        for (let i = 0; i < segments.length; i++) {
+          var trySlash = candidate + '/' + segments[i];
+          var tryDash = candidate + (candidate ? '-' : '') + segments[i];
+          var tryDot = candidate + (candidate ? '.' : '') + segments[i];
+          if (fs.existsSync(trySlash)) { candidate = trySlash; }
+          else if (fs.existsSync(tryDot)) { candidate = tryDot; }
+          else if (i === 0) { candidate = '/' + segments[i]; }
+          else { candidate = trySlash; } // default to slash
+        }
+        projectPath = candidate || ('/' + proj.replace(/-/g, '/'));
 
         for (const sessDir of fs.readdirSync(transcriptsDir)) {
           const sessFile = path.join(transcriptsDir, sessDir, sessDir + '.jsonl');

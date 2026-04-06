@@ -125,10 +125,16 @@ function startServer(port, openBrowser = true) {
       readBody(req, body => {
         try {
           const { ide, project } = JSON.parse(body);
+          const fs = require('fs');
+          // Ensure we open a directory, not a file
+          let target = project;
+          if (target && fs.existsSync(target) && !fs.statSync(target).isDirectory()) {
+            target = require('path').dirname(target);
+          }
           if (ide === 'cursor') {
-            exec(`cursor "${project}"`);
+            exec(`cursor "${target || '.'}"`);
           } else if (ide === 'code') {
-            exec(`code "${project}"`);
+            exec(`code "${target || '.'}"`);
           }
           json(res, { ok: true });
         } catch (e) {
