@@ -1136,11 +1136,11 @@ async function openDetail(s) {
 
   // Action buttons
   infoHtml += '<div class="detail-actions">';
-  // Show Focus button for active sessions
-  if (activeSessions[s.id]) {
-    infoHtml += '<button class="launch-btn" style="background:var(--accent-green);color:#000" onclick="focusSession(\'' + s.id + '\')">Focus Terminal</button>';
-  } else if (s.tool === 'cursor') {
+  // Tool-specific launch buttons
+  if (s.tool === 'cursor') {
     infoHtml += '<button class="launch-btn" style="background:#4a9eff" onclick="openInCursor(\'' + escHtml(s.project || '') + '\')">Open in Cursor</button>';
+  } else if (activeSessions[s.id]) {
+    infoHtml += '<button class="launch-btn" style="background:var(--accent-green);color:#000" onclick="focusSession(\'' + s.id + '\')">Focus Terminal</button>';
   } else {
     infoHtml += '<button class="launch-btn" onclick="launchSession(\'' + s.id + '\',\'' + escHtml(s.tool) + '\',\'' + escHtml(s.project || '') + '\')">Resume</button>';
     if (s.tool === 'claude') {
