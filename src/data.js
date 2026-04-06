@@ -131,7 +131,7 @@ function scanKiroSessions() {
 
   try {
     const rows = execSync(
-      `sqlite3 "${KIRO_DB}" "SELECT key, conversation_id, created_at, updated_at, substr(value, 1, 500) FROM conversations_v2 ORDER BY updated_at DESC"`,
+      `sqlite3 "${KIRO_DB}" "SELECT key, conversation_id, created_at, updated_at, substr(value, 1, 500), length(value) FROM conversations_v2 ORDER BY updated_at DESC"`,
       { encoding: 'utf8', timeout: 5000 }
     ).trim();
 
@@ -140,14 +140,18 @@ function scanKiroSessions() {
     for (const row of rows.split('\n')) {
       const parts = row.split('|');
       if (parts.length < 5) continue;
-      const [directory, convId, createdAt, updatedAt, valuePeek] = parts;
+      const [directory, convId, createdAt, updatedAt, valuePeek, valueLen] = parts;
 
-      // Extract first user prompt from JSON peek
+      // Extract first user prompt and estimate message count from JSON peek
       let firstMsg = '';
+      let msgCount = 0;
       try {
-        // Try to find prompt in the truncated JSON
         const promptMatch = valuePeek.match(/"prompt":"([^"]{1,100})"/);
         if (promptMatch) firstMsg = promptMatch[1];
+        // Count "prompt" occurrences as rough message estimate (each turn has user+assistant)
+        const promptCount = (valuePeek.match(/"prompt"/g) || []).length;
+        msgCount = promptCount * 2; // user + assistant per turn
+        if (msgCount === 0 && parseInt(valueLen) > 100) msgCount = Math.max(2, Math.floor(parseInt(valueLen) / 2000));
       } catch {}
 
       sessions.push({
@@ -157,11 +161,11 @@ function scanKiroSessions() {
         project_short: (directory || '').replace(os.homedir(), '~'),
         first_ts: parseInt(createdAt) || Date.now(),
         last_ts: parseInt(updatedAt) || Date.now(),
-        messages: 0,
+        messages: msgCount,
         first_message: firstMsg,
         has_detail: true,
-        file_size: 0,
-        detail_messages: 0,
+        file_size: parseInt(valueLen) || 0,
+        detail_messages: msgCount,
       });
     }
   } catch {}
@@ -510,7 +514,15 @@ function scanCodexSessions() {
 
 // ── Public API ─────────────────────────────────────────────
 
+let _sessionsCache = null;
+let _sessionsCacheTs = 0;
+const SESSIONS_CACHE_TTL = 10000; // 10 seconds
+
 function loadSessions() {
+  const now = Date.now();
+  if (_sessionsCache && (now - _sessionsCacheTs) < SESSIONS_CACHE_TTL) {
+    return _sessionsCache;
+  }
   const sessions = {};
 
   // Load Claude Code sessions
@@ -682,6 +694,8 @@ function loadSessions() {
     s.date = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
   }
 
+  _sessionsCache = result;
+  _sessionsCacheTs = Date.now();
   return result;
 }
 

@@ -19,6 +19,8 @@ let focusedIndex = -1;
 let availableTerminals = [];
 let pendingDelete = null;
 let activeSessions = {}; // sessionId -> {status, cpu, memoryMB, pid}
+let renderLimit = 60; // pagination — render at most this many cards
+const RENDER_PAGE_SIZE = 60;
 
 // Persisted in localStorage
 let stars = JSON.parse(localStorage.getItem('codedash-stars') || '[]');
@@ -305,33 +307,48 @@ function saveTerminalPref(val) {
 
 // ── Active sessions polling ───────────────────────────────────
 
+var _prevActiveKey = '';
+
 async function pollActiveSessions() {
   try {
     var resp = await fetch('/api/active');
     var data = await resp.json();
-    activeSessions = {};
+
+    // Build new state
+    var newActive = {};
     data.forEach(function(a) {
-      if (a.sessionId) {
-        activeSessions[a.sessionId] = a;
-      }
+      if (a.sessionId) newActive[a.sessionId] = a;
     });
-    // Update badges + animated border wrappers
+
+    // Check if anything changed — skip DOM work if not
+    var newKey = data.map(function(a) { return (a.sessionId || a.pid) + ':' + a.status; }).sort().join(',');
+    if (newKey === _prevActiveKey) return;
+    _prevActiveKey = newKey;
+
+    activeSessions = newActive;
+
+    // Only touch cards that changed
     document.querySelectorAll('.card').forEach(function(card) {
       var id = card.getAttribute('data-id');
+      var existing = card.querySelector('.live-badge');
+      var parent = card.parentElement;
+      var wasActive = parent && parent.classList.contains('card-live-wrap');
+      var isActive = !!activeSessions[id];
+
+      // No change — skip
+      if (!wasActive && !isActive && !existing) return;
 
       // Remove old badge
-      var existing = card.querySelector('.live-badge');
       if (existing) existing.remove();
 
-      // Remove old wrapper if session no longer active
-      var parent = card.parentElement;
-      if (parent && parent.classList.contains('card-live-wrap') && !activeSessions[id]) {
+      // Remove wrapper if no longer active
+      if (wasActive && !isActive) {
         parent.replaceWith(card);
         card.style.border = '';
         return;
       }
 
-      if (activeSessions[id]) {
+      if (isActive) {
         var a = activeSessions[id];
 
         // Add badge
@@ -342,20 +359,16 @@ async function pollActiveSessions() {
         var top = card.querySelector('.card-top');
         if (top) top.insertBefore(badge, top.firstChild);
 
-        // Add/update animated border wrapper
-        if (parent && parent.classList.contains('card-live-wrap')) {
-          // Update status class on existing wrapper
+        // Wrapper
+        if (wasActive) {
           parent.className = 'card-live-wrap' + (a.status === 'waiting' ? ' live-waiting' : '');
           parent.style.setProperty('--live-color', a.status === 'waiting'
-            ? 'rgba(251, 191, 36, 0.5)'
-            : 'rgba(74, 222, 128, 0.7)');
+            ? 'rgba(251, 191, 36, 0.5)' : 'rgba(74, 222, 128, 0.7)');
         } else {
-          // Create new wrapper
           var wrap = document.createElement('div');
           wrap.className = 'card-live-wrap' + (a.status === 'waiting' ? ' live-waiting' : '');
           wrap.style.setProperty('--live-color', a.status === 'waiting'
-            ? 'rgba(251, 191, 36, 0.5)'
-            : 'rgba(74, 222, 128, 0.7)');
+            ? 'rgba(251, 191, 36, 0.5)' : 'rgba(74, 222, 128, 0.7)');
           var borderDiv = document.createElement('div');
           borderDiv.className = 'live-border';
           card.parentNode.insertBefore(wrap, card);
@@ -433,6 +446,7 @@ function searchScore(query, session) {
 var SEARCH_THRESHOLD = 0.3;
 
 function applyFilters() {
+  renderLimit = RENDER_PAGE_SIZE; // reset pagination on filter change
   var scored = [];
   for (var i = 0; i < allSessions.length; i++) {
     var s = allSessions[i];
@@ -691,86 +705,6 @@ async function toggleExpand(sessionId, project, btn) {
   }
 }
 
-// ── Hover tooltip (show first messages on hover) ──────────────
-
-var hoverTimer = null;
-var hoverTooltip = null;
-
-function initHoverPreview() {
-  document.addEventListener('mouseover', function(e) {
-    var card = e.target.closest('.card');
-    if (!card) { hideHoverTooltip(); return; }
-
-    var id = card.getAttribute('data-id');
-    if (!id) return;
-
-    clearTimeout(hoverTimer);
-    hoverTimer = setTimeout(function() {
-      var s = allSessions.find(function(x) { return x.id === id; });
-      if (!s || !s.has_detail) return;
-      showHoverTooltip(card, s);
-    }, 400); // 400ms delay
-  });
-
-  document.addEventListener('mouseout', function(e) {
-    var card = e.target.closest('.card');
-    if (!card) { clearTimeout(hoverTimer); hideHoverTooltip(); }
-  });
-
-  // Hide tooltip on scroll
-  var content = document.querySelector('.content');
-  if (content) content.addEventListener('scroll', function() { clearTimeout(hoverTimer); hideHoverTooltip(); }, { passive: true });
-  window.addEventListener('scroll', function() { clearTimeout(hoverTimer); hideHoverTooltip(); }, { passive: true });
-}
-
-async function showHoverTooltip(card, session) {
-  hideHoverTooltip();
-
-  try {
-    var resp = await fetch('/api/preview/' + session.id + '?project=' + encodeURIComponent(session.project || '') + '&limit=6');
-    var messages = await resp.json();
-    if (messages.length === 0) return;
-
-    var tip = document.createElement('div');
-    tip.className = 'hover-tooltip';
-
-    var html = '';
-    messages.forEach(function(m) {
-      var label = m.role === 'user' ? 'You' : 'AI';
-      var cls = m.role === 'user' ? 'preview-user' : 'preview-assistant';
-      html += '<div class="preview-msg ' + cls + '">';
-      html += '<span class="preview-role">' + label + '</span> ';
-      html += escHtml(m.content.slice(0, 150));
-      if (m.content.length > 150) html += '...';
-      html += '</div>';
-    });
-    tip.innerHTML = html;
-
-    document.body.appendChild(tip);
-    hoverTooltip = tip;
-
-    // Position near card — clamp to viewport
-    var rect = card.getBoundingClientRect();
-    var tipH = tip.offsetHeight;
-    var tipTop = rect.bottom + 4;
-    // If tooltip would go below viewport, show above card instead
-    if (tipTop + tipH > window.innerHeight - 8) {
-      tipTop = Math.max(8, rect.top - tipH - 4);
-    }
-    tip.style.top = tipTop + 'px';
-    tip.style.left = Math.max(8, rect.left) + 'px';
-    tip.style.maxWidth = Math.min(500, window.innerWidth - rect.left - 20) + 'px';
-
-    requestAnimationFrame(function() { tip.classList.add('visible'); });
-  } catch {}
-}
-
-function hideHoverTooltip() {
-  if (hoverTooltip) {
-    hoverTooltip.remove();
-    hoverTooltip = null;
-  }
-}
 
 // ── Deep search (full-text across session content) ────────────
 
@@ -906,13 +840,25 @@ function render() {
   }
 
   var renderFn = layout === 'list' ? renderListCard : renderCard;
+  var visible = sessions.slice(0, renderLimit);
+  var hasMore = sessions.length > renderLimit;
+
   if (grouped) {
-    renderGrouped(content, sessions, renderFn);
+    renderGrouped(content, visible, renderFn);
   } else {
     var idx2 = 0;
     var wrapClass = layout === 'list' ? 'list-view' : 'grid-view';
-    content.innerHTML = '<div class="' + wrapClass + '">' + sessions.map(function(s) { return renderFn(s, idx2++); }).join('') + '</div>';
+    content.innerHTML = '<div class="' + wrapClass + '">' + visible.map(function(s) { return renderFn(s, idx2++); }).join('') + '</div>';
   }
+
+  if (hasMore) {
+    content.innerHTML += '<div style="text-align:center;padding:20px"><button class="toolbar-btn" onclick="loadMoreCards()" style="padding:8px 24px">Load more (' + (sessions.length - renderLimit) + ' remaining)</button></div>';
+  }
+}
+
+function loadMoreCards() {
+  renderLimit += RENDER_PAGE_SIZE;
+  render();
 }
 
 function renderGrouped(container, sessions, renderFn) {
@@ -2192,7 +2138,6 @@ function dismissUpdate() {
   loadSessions();
   loadTerminals();
   checkForUpdates();
-  initHoverPreview();
   startActivePolling();
 
   // Apply saved theme
