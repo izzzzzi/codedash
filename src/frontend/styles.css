@@ -1051,6 +1051,11 @@ body {
     color: var(--accent-orange);
 }
 
+.tool-cursor {
+    background: rgba(96, 165, 250, 0.15);
+    color: #4a9eff;
+}
+
 /* ── Groups ─────────────────────────────────────────────────── */
 
 .group {

@@ -413,6 +413,9 @@ function setView(view) {
   } else if (view === 'codex-only') {
     toolFilter = toolFilter === 'codex' ? null : 'codex';
     currentView = 'sessions';
+  } else if (view === 'cursor-only') {
+    toolFilter = toolFilter === 'cursor' ? null : 'cursor';
+    currentView = 'sessions';
   } else if (view === 'kiro-only') {
     toolFilter = toolFilter === 'kiro' ? null : 'kiro';
     currentView = 'sessions';
@@ -450,7 +453,7 @@ function renderCard(s, idx) {
   var costStr = cost > 0 ? '~$' + cost.toFixed(2) : '';
   var projName = getProjectName(s.project);
   var projColor = getProjectColor(projName);
-  var toolClass = s.tool === 'codex' ? 'tool-codex' : s.tool === 'opencode' ? 'tool-opencode' : s.tool === 'kiro' ? 'tool-kiro' : 'tool-claude';
+  var toolClass = s.tool === 'codex' ? 'tool-codex' : s.tool === 'opencode' ? 'tool-opencode' : s.tool === 'kiro' ? 'tool-kiro' : s.tool === 'cursor' ? 'tool-cursor' : 'tool-claude';
 
   var classes = 'card';
   if (isSelected) classes += ' selected';

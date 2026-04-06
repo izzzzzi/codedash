@@ -9,6 +9,9 @@ const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const CODEX_DIR = path.join(os.homedir(), '.codex');
 const OPENCODE_DB = path.join(os.homedir(), '.local', 'share', 'opencode', 'opencode.db');
 const KIRO_DB = path.join(os.homedir(), 'Library', 'Application Support', 'kiro-cli', 'data.sqlite3');
+const CURSOR_DIR = path.join(os.homedir(), '.cursor');
+const CURSOR_PROJECTS = path.join(CURSOR_DIR, 'projects');
+const CURSOR_CHATS = path.join(CURSOR_DIR, 'chats');
 const HISTORY_FILE = path.join(CLAUDE_DIR, 'history.jsonl');
 const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 
@@ -199,6 +202,173 @@ function loadKiroDetail(conversationId) {
   }
 }
 
+function scanCursorSessions() {
+  const sessions = [];
+
+  // Scan ~/.cursor/projects/*/agent-transcripts/*/*.jsonl
+  if (fs.existsSync(CURSOR_PROJECTS)) {
+    try {
+      for (const proj of fs.readdirSync(CURSOR_PROJECTS)) {
+        const transcriptsDir = path.join(CURSOR_PROJECTS, proj, 'agent-transcripts');
+        if (!fs.existsSync(transcriptsDir)) continue;
+
+        // Decode project path: "Users-v-kovalskii-vpn" → "/Users/v.kovalskii/vpn"
+        const projectPath = '/' + proj.replace(/-/g, '/');
+
+        for (const sessDir of fs.readdirSync(transcriptsDir)) {
+          const sessFile = path.join(transcriptsDir, sessDir, sessDir + '.jsonl');
+          if (!fs.existsSync(sessFile)) continue;
+
+          const stat = fs.statSync(sessFile);
+          let firstMsg = '';
+          let msgCount = 0;
+          try {
+            const firstLine = fs.readFileSync(sessFile, 'utf8').split('\n')[0];
+            const d = JSON.parse(firstLine);
+            const content = (d.message || {}).content;
+            if (Array.isArray(content)) {
+              for (const part of content) {
+                if (part.type === 'text' && part.text) {
+                  // Strip <user_query> wrapper
+                  firstMsg = part.text.replace(/<\/?user_query>/g, '').trim().slice(0, 200);
+                  break;
+                }
+              }
+            }
+            // Count lines
+            msgCount = fs.readFileSync(sessFile, 'utf8').split('\n').filter(Boolean).length;
+          } catch {}
+
+          sessions.push({
+            id: sessDir,
+            tool: 'cursor',
+            project: projectPath,
+            project_short: projectPath.replace(os.homedir(), '~'),
+            first_ts: stat.mtimeMs - (msgCount * 60000), // rough estimate
+            last_ts: stat.mtimeMs,
+            messages: msgCount,
+            first_message: firstMsg,
+            has_detail: true,
+            file_size: stat.size,
+            detail_messages: msgCount,
+            _file: sessFile,
+          });
+        }
+      }
+    } catch {}
+  }
+
+  // Also scan ~/.cursor/chats/*/ (Linux format)
+  if (fs.existsSync(CURSOR_CHATS)) {
+    try {
+      for (const chatDir of fs.readdirSync(CURSOR_CHATS)) {
+        const fullDir = path.join(CURSOR_CHATS, chatDir);
+        if (!fs.statSync(fullDir).isDirectory()) continue;
+
+        // Look for .jsonl or .json inside
+        for (const f of fs.readdirSync(fullDir)) {
+          if (!f.endsWith('.jsonl') && !f.endsWith('.json')) continue;
+          const filePath = path.join(fullDir, f);
+          const stat = fs.statSync(filePath);
+
+          let firstMsg = '';
+          let msgCount = 0;
+          try {
+            const firstLine = fs.readFileSync(filePath, 'utf8').split('\n')[0];
+            const d = JSON.parse(firstLine);
+            if (d.role === 'user') {
+              const content = (d.message || {}).content || d.content;
+              if (typeof content === 'string') firstMsg = content.slice(0, 200);
+              else if (Array.isArray(content)) {
+                for (const p of content) {
+                  if (p.text) { firstMsg = p.text.replace(/<\/?user_query>/g, '').trim().slice(0, 200); break; }
+                }
+              }
+            }
+            msgCount = fs.readFileSync(filePath, 'utf8').split('\n').filter(Boolean).length;
+          } catch {}
+
+          sessions.push({
+            id: chatDir,
+            tool: 'cursor',
+            project: '',
+            project_short: '',
+            first_ts: stat.mtimeMs - (msgCount * 60000),
+            last_ts: stat.mtimeMs,
+            messages: msgCount,
+            first_message: firstMsg,
+            has_detail: true,
+            file_size: stat.size,
+            detail_messages: msgCount,
+            _file: filePath,
+          });
+          break; // one file per chat dir
+        }
+      }
+    } catch {}
+  }
+
+  return sessions;
+}
+
+function loadCursorDetail(sessionId) {
+  // Find the file
+  let filePath = null;
+
+  // Search in projects
+  if (fs.existsSync(CURSOR_PROJECTS)) {
+    for (const proj of fs.readdirSync(CURSOR_PROJECTS)) {
+      const f = path.join(CURSOR_PROJECTS, proj, 'agent-transcripts', sessionId, sessionId + '.jsonl');
+      if (fs.existsSync(f)) { filePath = f; break; }
+    }
+  }
+
+  // Search in chats
+  if (!filePath && fs.existsSync(CURSOR_CHATS)) {
+    const chatDir = path.join(CURSOR_CHATS, sessionId);
+    if (fs.existsSync(chatDir)) {
+      for (const f of fs.readdirSync(chatDir)) {
+        if (f.endsWith('.jsonl') || f.endsWith('.json')) {
+          filePath = path.join(chatDir, f);
+          break;
+        }
+      }
+    }
+  }
+
+  if (!filePath) return { messages: [] };
+
+  const messages = [];
+  const lines = fs.readFileSync(filePath, 'utf8').split('\n').filter(Boolean);
+
+  for (const line of lines) {
+    try {
+      const d = JSON.parse(line);
+      const role = d.role;
+      if (role !== 'user' && role !== 'assistant') continue;
+
+      const content = (d.message || {}).content || d.content || '';
+      let text = '';
+      if (typeof content === 'string') {
+        text = content;
+      } else if (Array.isArray(content)) {
+        text = content
+          .filter(function(p) { return p.type === 'text' && p.text; })
+          .map(function(p) { return p.text; })
+          .join('\n');
+      }
+
+      // Strip Cursor wrappers
+      text = text.replace(/<\/?user_query>/g, '').replace(/<\/?tool_call>/g, '').trim();
+      if (!text) continue;
+
+      messages.push({ role: role, content: text.slice(0, 2000), uuid: '' });
+    } catch {}
+  }
+
+  return { messages: messages.slice(0, 200) };
+}
+
 function scanCodexSessions() {
   const sessions = [];
   const codexHistory = path.join(CODEX_DIR, 'history.jsonl');
@@ -349,6 +519,14 @@ function loadSessions() {
     }
   } catch {}
 
+  // Load Cursor sessions
+  try {
+    const cursorSessions = scanCursorSessions();
+    for (const cs of cursorSessions) {
+      sessions[cs.id] = cs;
+    }
+  } catch {}
+
   // Load Kiro sessions
   try {
     const kiroSessions = scanKiroSessions();
@@ -402,6 +580,11 @@ function loadSessionDetail(sessionId, project) {
   // OpenCode uses SQLite
   if (found.format === 'opencode') {
     return loadOpenCodeDetail(sessionId);
+  }
+
+  // Cursor
+  if (found.format === 'cursor') {
+    return loadCursorDetail(sessionId);
   }
 
   // Kiro uses SQLite
@@ -586,6 +769,28 @@ function findSessionFile(sessionId, project) {
     return { file: OPENCODE_DB, format: 'opencode', sessionId: sessionId };
   }
 
+  // Try Cursor
+  if (fs.existsSync(CURSOR_PROJECTS) || fs.existsSync(CURSOR_CHATS)) {
+    // Check projects
+    if (fs.existsSync(CURSOR_PROJECTS)) {
+      for (const proj of fs.readdirSync(CURSOR_PROJECTS)) {
+        const f = path.join(CURSOR_PROJECTS, proj, 'agent-transcripts', sessionId, sessionId + '.jsonl');
+        if (fs.existsSync(f)) return { file: f, format: 'cursor' };
+      }
+    }
+    // Check chats
+    if (fs.existsSync(CURSOR_CHATS)) {
+      const chatDir = path.join(CURSOR_CHATS, sessionId);
+      if (fs.existsSync(chatDir)) {
+        for (const f of fs.readdirSync(chatDir)) {
+          if (f.endsWith('.jsonl') || f.endsWith('.json')) {
+            return { file: path.join(chatDir, f), format: 'cursor' };
+          }
+        }
+      }
+    }
+  }
+
   // Try Kiro (SQLite)
   if (fs.existsSync(KIRO_DB)) {
     try {
@@ -633,6 +838,14 @@ function getSessionPreview(sessionId, project, limit) {
   limit = limit || 10;
   const found = findSessionFile(sessionId, project);
   if (!found) return [];
+
+  // Cursor
+  if (found.format === 'cursor') {
+    var detail = loadCursorDetail(sessionId);
+    return detail.messages.slice(0, limit).map(function(m) {
+      return { role: m.role, content: m.content.slice(0, 300) };
+    });
+  }
 
   // Kiro: use loadKiroDetail and slice
   if (found.format === 'kiro') {
