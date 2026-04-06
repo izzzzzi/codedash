@@ -71,6 +71,25 @@ function readLines(filePath) {
   return fs.readFileSync(filePath, 'utf8').split('\n').map(l => l.replace(/\r$/, '')).filter(Boolean);
 }
 
+// OpenCode built-in tools that should NOT be treated as MCP servers
+const OPENCODE_BUILTIN_TOOLS = new Set([
+  'read', 'write', 'edit', 'bash', 'glob', 'grep', 'task', 'todowrite',
+  'delegate_task', 'apply_patch', 'webfetch', 'websearch', 'slashcommand',
+  'question', 'background_task', 'background_output', 'background_cancel',
+  'lsp_diagnostics', 'ast_grep_search', 'ast_grep_replace', 'session_read',
+  'skill', 'skill_mcp', 'call_omo_agent',
+]);
+
+// OpenCode tool names like "chrome-devtools_take_screenshot" → server "chrome-devtools"
+// Returns null if it's a built-in tool, otherwise the server name (first segment).
+function parseOpenCodeMcpServer(toolName) {
+  if (!toolName || OPENCODE_BUILTIN_TOOLS.has(toolName)) return null;
+  // Match server_tool or server-with-dashes_tool
+  const idx = toolName.indexOf('_');
+  if (idx <= 0) return null;
+  return toolName.slice(0, idx);
+}
+
 function parseClaudeSessionFile(sessionFile) {
   if (!fs.existsSync(sessionFile)) return null;
 
@@ -252,6 +271,41 @@ function scanOpenCodeSessions() {
 
     if (!rows) return sessions;
 
+    // Get MCP/Skills usage per session in one query
+    const sessionMcp = {};
+    const sessionSkills = {};
+    try {
+      const toolRows = execSync(
+        `sqlite3 -separator $'\\t' "${OPENCODE_DB}" "SELECT session_id, json_extract(data, '\\$.tool'), json_extract(data, '\\$.state.input.name') FROM part WHERE json_extract(data, '\\$.type') = 'tool'"`,
+        { encoding: 'utf8', timeout: 10000, maxBuffer: 50 * 1024 * 1024 }
+      ).trim();
+      if (toolRows) {
+        for (const tr of toolRows.split('\n')) {
+          const cols = tr.split('\t');
+          if (cols.length < 2) continue;
+          const sid = cols[0];
+          const toolName = cols[1];
+          const skillName = cols[2];
+          if (!sid || !toolName) continue;
+          // Skill tool: collect skill name
+          if (toolName === 'skill' || toolName === 'skill_mcp') {
+            if (skillName) {
+              if (!sessionSkills[sid]) sessionSkills[sid] = new Set();
+              const sk = skillName.includes(':') ? skillName.split(':')[0] : skillName;
+              sessionSkills[sid].add(sk);
+            }
+            continue;
+          }
+          // MCP tool: extract server name
+          const server = parseOpenCodeMcpServer(toolName);
+          if (server) {
+            if (!sessionMcp[sid]) sessionMcp[sid] = new Set();
+            sessionMcp[sid].add(server);
+          }
+        }
+      }
+    } catch {}
+
     for (const row of rows.split('\n')) {
       const parts = row.split('\t');
       if (parts.length < 6) continue;
@@ -269,6 +323,8 @@ function scanOpenCodeSessions() {
         has_detail: true,
         file_size: 0,
         detail_messages: parseInt(msgCount) || 0,
+        mcp_servers: sessionMcp[id] ? Array.from(sessionMcp[id]) : [],
+        skills: sessionSkills[id] ? Array.from(sessionSkills[id]) : [],
       });
     }
   } catch {}
@@ -314,14 +370,39 @@ function loadOpenCodeDetail(sessionId) {
       const role = msgData.role;
       if (role !== 'user' && role !== 'assistant') continue;
 
-      // Extract text from parts
+      // Extract text + tools from parts
       let content = '';
+      const tools = [];
+      const toolSeen = new Set();
       if (partsRaw) {
         for (const partStr of partsRaw.split('|||')) {
           try {
             const part = JSON.parse(partStr);
             if (part.type === 'text' && part.text) {
               content += part.text + '\n';
+            } else if (part.type === 'tool' && part.tool) {
+              const toolName = part.tool;
+              if (toolName === 'skill' || toolName === 'skill_mcp') {
+                const skillRaw = part.state && part.state.input && part.state.input.name;
+                if (skillRaw) {
+                  const sk = skillRaw.includes(':') ? skillRaw.split(':')[0] : skillRaw;
+                  const key = 'skill:' + sk;
+                  if (!toolSeen.has(key)) {
+                    toolSeen.add(key);
+                    tools.push({ type: 'skill', skill: sk });
+                  }
+                }
+              } else {
+                const server = parseOpenCodeMcpServer(toolName);
+                if (server) {
+                  const tool = toolName.slice(server.length + 1);
+                  const key = 'mcp:' + server + ':' + tool;
+                  if (!toolSeen.has(key)) {
+                    toolSeen.add(key);
+                    tools.push({ type: 'mcp', server: server, tool: tool });
+                  }
+                }
+              }
             }
           } catch {}
         }
@@ -332,13 +413,15 @@ function loadOpenCodeDetail(sessionId) {
 
       const tokens = msgData.tokens || {};
 
-      messages.push({
+      const msg = {
         role: role,
         content: content.slice(0, 2000),
         uuid: '',
         model: msgData.modelID || msgData.model?.modelID || '',
         tokens: tokens,
-      });
+      };
+      if (tools.length > 0) msg.tools = tools;
+      messages.push(msg);
     }
 
     return { messages: messages.slice(0, 200) };
