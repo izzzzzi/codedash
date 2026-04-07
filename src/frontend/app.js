@@ -198,17 +198,15 @@ function toggleAITitles(checked) {
   render();
 }
 
-function openLLMSettings() {
-  document.getElementById('llmSettingsOverlay').style.display = 'flex';
+function loadLLMSettings() {
   fetch('/api/llm-config').then(function(r) { return r.json(); }).then(function(c) {
-    document.getElementById('llmUrl').value = c.url || '';
-    document.getElementById('llmApiKey').value = c.apiKey || '';
-    document.getElementById('llmModel').value = c.model || '';
+    var u = document.getElementById('llmUrl');
+    var k = document.getElementById('llmApiKey');
+    var m = document.getElementById('llmModel');
+    if (u) u.value = c.url || '';
+    if (k) k.value = c.apiKey || '';
+    if (m) m.value = c.model || '';
   });
-}
-
-function closeLLMSettings() {
-  document.getElementById('llmSettingsOverlay').style.display = 'none';
 }
 
 function saveLLMSettings() {
@@ -222,7 +220,6 @@ function saveLLMSettings() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
   }).then(function() {
-    closeLLMSettings();
     showToast('LLM settings saved');
   });
 }
@@ -831,6 +828,11 @@ function render() {
 
   if (currentView === 'changelog') {
     renderChangelog(content);
+    return;
+  }
+
+  if (currentView === 'settings') {
+    renderSettings(content);
     return;
   }
 
@@ -2071,6 +2073,70 @@ function focusSession(sessionId) {
 }
 
 // ── Changelog view ────────────────────────────────────────────
+
+function renderSettings(container) {
+  var savedTheme = localStorage.getItem('codedash-theme') || 'dark';
+  var savedTerminal = localStorage.getItem('codedash-terminal') || '';
+  var aiTitlesOn = localStorage.getItem('codedash-ai-titles') === 'true';
+
+  var html = '<div class="settings-page">';
+  html += '<h2 style="margin:0 0 24px;font-size:18px;font-weight:600">Settings</h2>';
+
+  // Theme
+  html += '<div class="settings-group">';
+  html += '<label class="settings-label">Theme</label>';
+  html += '<div class="settings-theme-btns">';
+  ['dark', 'light', 'system'].forEach(function(t) {
+    var active = savedTheme === t ? ' active' : '';
+    html += '<button class="theme-btn' + active + '" onclick="saveThemePref(\'' + t + '\');renderSettings(document.getElementById(\'content\'))">' + t.charAt(0).toUpperCase() + t.slice(1) + '</button>';
+  });
+  html += '</div>';
+  html += '</div>';
+
+  // Terminal
+  html += '<div class="settings-group">';
+  html += '<label class="settings-label">Terminal</label>';
+  html += '<select class="settings-select" onchange="saveTerminalPref(this.value)">';
+  if (Array.isArray(availableTerminals)) {
+    availableTerminals.forEach(function(t) {
+      if (!t.available) return;
+      var sel = t.id === savedTerminal ? ' selected' : '';
+      html += '<option value="' + t.id + '"' + sel + '>' + escHtml(t.name) + '</option>';
+    });
+  }
+  html += '</select>';
+  html += '</div>';
+
+  // AI Titles
+  html += '<div class="settings-group">';
+  html += '<label class="settings-label">AI Titles</label>';
+  html += '<div class="settings-checkbox">';
+  html += '<input type="checkbox" id="settingsAiToggle"' + (aiTitlesOn ? ' checked' : '') + ' onchange="toggleAITitles(this.checked)">';
+  html += '<span style="font-size:13px;color:var(--text-secondary)">Show generated titles</span>';
+  html += '</div>';
+  html += '</div>';
+
+  // LLM Configuration
+  html += '<div class="settings-group">';
+  html += '<label class="settings-label">LLM Configuration</label>';
+  html += '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">OpenAI-compatible API for session title generation</p>';
+  html += '<div style="display:flex;flex-direction:column;gap:8px">';
+  html += '<input type="text" id="llmUrl" class="settings-select" placeholder="http://host:port/v1">';
+  html += '<input type="password" id="llmApiKey" class="settings-select" placeholder="API Key (sk-...)">';
+  html += '<input type="text" id="llmModel" class="settings-select" placeholder="Model (gpt-4o-mini)">';
+  html += '</div>';
+  html += '<div style="display:flex;gap:8px;margin-top:12px">';
+  html += '<button class="theme-btn active" onclick="saveLLMSettings()">Save</button>';
+  html += '<button class="theme-btn" onclick="testLLMConnection()">Test Connection</button>';
+  html += '</div>';
+  html += '</div>';
+
+  html += '</div>';
+  container.innerHTML = html;
+
+  // Load LLM config into the inputs
+  loadLLMSettings();
+}
 
 async function renderChangelog(container) {
   container.innerHTML = '<div class="loading">Loading changelog...</div>';
