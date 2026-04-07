@@ -466,9 +466,21 @@ function saveLLMConfig(config) {
 
 function callLLM(config, conversation, totalMessages) {
   return new Promise((resolve, reject) => {
-    const prompt = `You are a helpful assistant that generates concise session titles.
+    const prompt = `Below is a coding session (first and last messages from ${totalMessages} total).
 
-Given a coding session conversation (first and last messages from ${totalMessages} total), generate a short descriptive title (3-8 words) that captures the main topic/task.
+Write a SHORT summary (5-15 words) of what was CONCRETELY done in this session. Be specific: mention technologies, files, features, bugs — not vague descriptions. Write in the same language the user used.
+
+Good examples:
+- "Фикс авторизации через OAuth + рефактор middleware"
+- "Добавил поддержку Cursor сессий и cmux терминала"
+- "Настройка nginx reverse proxy для staging сервера"
+- "Fix Codex message count bug in grid view"
+- "Docker compose setup for multi-agent dashboard"
+
+Bad examples (too vague):
+- "Coding session about project setup"
+- "Bug fix and improvements"
+- "Working with code"
 
 Conversation:
 ${conversation}`;
@@ -476,11 +488,11 @@ ${conversation}`;
     const body = JSON.stringify({
       model: config.model,
       messages: [
-        { role: 'system', content: 'Generate a concise title for this coding session. Respond with JSON: {"title": "your title here"}' },
+        { role: 'system', content: 'Write a short concrete summary of what was done. Respond ONLY with JSON: {"title": "your summary here"}' },
         { role: 'user', content: prompt },
       ],
       response_format: { type: 'json_object' },
-      max_tokens: 100,
+      max_tokens: 150,
       temperature: 0.3,
     });
 
