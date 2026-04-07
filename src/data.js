@@ -209,16 +209,17 @@ function scanOpenCodeSessions() {
   if (!fs.existsSync(OPENCODE_DB)) return sessions;
 
   try {
-    // Use sqlite3 CLI to avoid Node version dependency
+    // Use sqlite3 CLI with tab separator — session titles can contain pipes
+    // (e.g. "review changes [commit|branch|pr]") which break the default | separator
     const rows = execSync(
-      `sqlite3 "${OPENCODE_DB}" "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, COUNT(m.id) as msg_count FROM session s LEFT JOIN message m ON m.session_id = s.id GROUP BY s.id ORDER BY s.time_updated DESC"`,
+      `sqlite3 -separator $'\\t' "${OPENCODE_DB}" "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, COUNT(m.id) as msg_count FROM session s LEFT JOIN message m ON m.session_id = s.id GROUP BY s.id ORDER BY s.time_updated DESC"`,
       { encoding: 'utf8', timeout: 5000 }
     ).trim();
 
     if (!rows) return sessions;
 
     for (const row of rows.split('\n')) {
-      const parts = row.split('|');
+      const parts = row.split('\t');
       if (parts.length < 6) continue;
       const [id, title, directory, timeCreated, timeUpdated, msgCount] = parts;
 
@@ -318,14 +319,14 @@ function scanKiroSessions() {
 
   try {
     const rows = execSync(
-      `sqlite3 "${KIRO_DB}" "SELECT key, conversation_id, created_at, updated_at, substr(value, 1, 500), length(value) FROM conversations_v2 ORDER BY updated_at DESC"`,
+      `sqlite3 -separator $'\\t' "${KIRO_DB}" "SELECT key, conversation_id, created_at, updated_at, substr(value, 1, 500), length(value) FROM conversations_v2 ORDER BY updated_at DESC"`,
       { encoding: 'utf8', timeout: 5000 }
     ).trim();
 
     if (!rows) return sessions;
 
     for (const row of rows.split('\n')) {
-      const parts = row.split('|');
+      const parts = row.split('\t');
       if (parts.length < 5) continue;
       const [directory, convId, createdAt, updatedAt, valuePeek, valueLen] = parts;
 
